@@ -4,7 +4,8 @@ import { config } from './config.js'
 export const pool = new pg.Pool({
   connectionString: config.databaseUrl,
   ssl: config.databaseSsl,
-  max: 10,
+  // En Vercel cada instancia de la función abre pocas conexiones.
+  max: process.env.VERCEL ? 2 : 10,
 })
 
 export function query(texto, parametros) {
