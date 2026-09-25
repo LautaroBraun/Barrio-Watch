@@ -47,6 +47,7 @@ shared/     Reglas de validación compartidas (HU02)
 backend/    API REST con Express
 frontend/   Interfaz en React
 database/   esquema.sql (modelo completo) y migraciones/
+docs/       Decisiones del sprint, listas para el informe
 ```
 
 ## Cómo correrlo
