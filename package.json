@@ -2,6 +2,7 @@
   "name": "barrio-watch",
   "private": true,
   "description": "Plataforma de gestión comunitaria hiperlocal para barrios",
+  "type": "module",
   "workspaces": [
     "shared",
     "backend",
