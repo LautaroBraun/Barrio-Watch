@@ -105,6 +105,17 @@ npm test
 
 Sin `TEST_DATABASE_URL` se corren solo las pruebas de validación.
 
+## Despliegue
+
+Producción: **https://barrio-watch.vercel.app** (Vercel + Supabase).
+
+- `vercel.json` publica `frontend/dist` y redirige `/api/*` a `api/index.js`,
+  que corre la API de Express como función serverless.
+- Variables en Vercel: `DATABASE_URL`, `DATABASE_SSL=true`, `JWT_SECRET`,
+  `FRONTEND_URL`, `TRUST_PROXY=1` (y las de SMTP para enviar correos).
+- La API se conecta con el usuario `barrio_api`
+  (`database/migraciones/002_rol_api.sql`), no con `postgres`.
+
 ## Las pantallas
 
 Cada pantalla tiene su propia ilustración, pensada para que el barrio
