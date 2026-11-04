@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/cliente.js'
-import { Aviso } from '../components/Formulario.jsx'
-import { IconoCheck, IconoPin, IconoSalir } from '../components/Iconos.jsx'
-import Logo from '../components/Logo.jsx'
+import BarraSuperior, { Avatar } from '../components/BarraSuperior.jsx'
+import { Aviso, Boton } from '../components/Formulario.jsx'
+import { IconoCheck, IconoPin } from '../components/Iconos.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const CATEGORIAS = {
@@ -29,12 +29,43 @@ function saludo() {
   return 'Buenas noches'
 }
 
-function Avatar({ nombre, apellido, className = 'size-10 text-sm' }) {
+// HU06 · CA 6.4 — aviso persistente mientras la cuenta no confirme el correo.
+// Acompaña al bloqueo real, que vive en el servidor (requiereEmailVerificado).
+function AvisoSinVerificar({ email }) {
+  const [reenvio, setReenvio] = useState({ estado: 'listo', mensaje: null })
+
+  async function reenviar() {
+    setReenvio({ estado: 'enviando', mensaje: null })
+    try {
+      const { mensaje } = await api('/auth/reenviar-verificacion', { method: 'POST' })
+      setReenvio({ estado: 'enviado', mensaje })
+    } catch (error) {
+      setReenvio({ estado: 'espera', mensaje: error.message })
+    }
+  }
+
   return (
-    <span className={`grid shrink-0 place-items-center rounded-full bg-coral font-display font-bold text-white ${className}`} aria-hidden="true">
-      {nombre?.[0]}
-      {apellido?.[0]}
-    </span>
+    <Aviso tipo="aviso" titulo="Te falta confirmar tu correo" className="mb-6">
+      {reenvio.estado === 'enviado' || reenvio.estado === 'espera' ? (
+        <p>{reenvio.mensaje}</p>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Podés leer lo que pasa en tu zona, pero hasta confirmar <strong className="font-bold">{email}</strong> no vas
+            a poder publicar ni reportar.
+          </p>
+          <Boton
+            variante="secundario"
+            bloque={false}
+            onClick={reenviar}
+            cargando={reenvio.estado === 'enviando'}
+            className="h-11 shrink-0 text-sm"
+          >
+            Reenviar el correo
+          </Boton>
+        </div>
+      )}
+    </Aviso>
   )
 }
 
@@ -111,10 +142,9 @@ function Tranquilo({ zona }) {
 
 // CA 3.1: pantalla principal con el nombre en la barra y las publicaciones de su zona.
 export default function Inicio() {
-  const { usuario, cerrarSesion } = useAuth()
+  const { usuario } = useAuth()
   const [publicaciones, setPublicaciones] = useState(null)
   const [error, setError] = useState(null)
-  const [saliendo, setSaliendo] = useState(false)
 
   useEffect(() => {
     api('/publicaciones')
@@ -126,42 +156,11 @@ export default function Inicio() {
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-20 border-b border-linea/70 bg-papel/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4 sm:h-18 sm:px-6">
-          <Logo />
-          <div className="ml-auto flex items-center gap-2 sm:gap-4">
-            <span className="hidden items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm font-semibold sm:inline-flex">
-              <IconoPin width={16} height={16} className="text-coral" />
-              {usuario.zona.nombre}
-            </span>
-            <span className="flex items-center gap-2.5">
-              <Avatar nombre={usuario.nombre} apellido={usuario.apellido} />
-              <span className="leading-tight">
-                <span className="block text-sm font-bold">
-                  {usuario.nombre}
-                  <span className="hidden md:inline"> {usuario.apellido}</span>
-                </span>
-                <span className="hidden text-xs text-tinta-suave capitalize md:block">{usuario.rol}</span>
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={async () => {
-                setSaliendo(true)
-                await cerrarSesion()
-              }}
-              disabled={saliendo}
-              className="inline-flex h-10 items-center gap-2 rounded-full border-2 border-linea bg-white px-3 text-sm font-bold transition-colors hover:border-tinta/40 disabled:opacity-60 sm:px-4"
-            >
-              <IconoSalir width={18} height={18} />
-              <span className="hidden sm:inline">Cerrar sesión</span>
-              <span className="sr-only sm:hidden">Cerrar sesión</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <BarraSuperior />
 
       <main className="mx-auto max-w-5xl px-4 pt-8 pb-16 sm:px-6 sm:pt-12">
+        {!usuario.emailVerificado && <AvisoSinVerificar email={usuario.email} />}
+
         <section className="relative overflow-hidden rounded-[32px] bg-tinta px-6 py-8 text-white sm:px-10 sm:py-10">
           <svg viewBox="0 0 400 160" className="absolute right-0 bottom-0 hidden h-full opacity-90 sm:block" aria-hidden="true">
             <path d="M150 160 V96 L196 62 L242 96 V160 Z" fill="#2B2A45" />

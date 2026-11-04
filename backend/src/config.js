@@ -37,6 +37,10 @@ export const config = {
   minutosBloqueo: 15,
   // HU05: el enlace de recuperación vale 1 hora y es de un solo uso.
   minutosVigenciaEnlace: 60,
+  // HU06 · CA 6.1: el enlace de verificación del correo vale 24 horas.
+  horasVigenciaVerificacion: 24,
+  // HU06 · CA 6.5: entre dos reenvíos tienen que pasar 5 minutos.
+  minutosEntreReenvios: 5,
   frontendUrl: (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/$/, ''),
   trustProxy: leerTrustProxy(process.env.TRUST_PROXY),
   smtp: {
