@@ -1,12 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { MENSAJES, LIMITES, normalizarEmail, requisitosPassword, validarRegistro } from '@barrio-watch/shared'
 import { api } from '../api/cliente.js'
-import { Aviso, Boton, Campo, CampoPassword, CampoSelect, ListaRequisitos, MensajeCampo } from '../components/Formulario.jsx'
+import {
+  Aviso,
+  Boton,
+  Campo,
+  CampoCasilla,
+  CampoPassword,
+  CampoSelect,
+  ListaRequisitos,
+  MensajeCampo,
+} from '../components/Formulario.jsx'
+import { IconoSobre } from '../components/Iconos.jsx'
 import Logo from '../components/Logo.jsx'
+import Modal from '../components/Modal.jsx'
 import Casa from '../ilustraciones/Casa.jsx'
+import { DOCUMENTOS } from '../textos/legales.js'
 
-const VACIO = { nombre: '', apellido: '', email: '', password: '', idZona: '' }
+// HU08 · CA 8.1: el teléfono viaja vacío si no se completa; es opcional.
+// HU07 · CA 7.1: la aceptación arranca sin marcar y es obligatoria.
+const VACIO = { nombre: '', apellido: '', email: '', telefono: '', password: '', idZona: '', terminos: false }
 const COLORES_CONFETI = ['#FF7A45', '#F5C542', '#6C5CE7', '#2EC4B6', '#1B1A2E']
 
 function Confeti() {
@@ -43,9 +57,46 @@ function textoProgreso(listos, total, creada) {
   return `¡Vamos bien! ${faltan === 1 ? 'Falta 1 dato' : `Faltan ${faltan} datos`}.`
 }
 
+// HU06 · CA 6.1 — lo que se ve apenas la cuenta queda creada: el correo salió
+// y hasta que no se confirme la cuenta entra en solo lectura (CA 6.4).
+function RevisaTuCorreo({ cuenta, reenvio, onReenviar }) {
+  return (
+    <div className="entrar">
+      <span className="grid size-14 place-items-center rounded-full bg-violeta-claro text-violeta">
+        <IconoSobre width={26} height={26} />
+      </span>
+      <h1 className="mt-5 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Revisá tu correo</h1>
+      <p className="mt-2 text-tinta-suave">
+        {cuenta.nombre}, le mandamos un enlace a <strong className="font-bold text-tinta">{cuenta.email}</strong> para
+        confirmar que la casilla es tuya. El enlace vale 24 horas y se usa una sola vez.
+      </p>
+      <p className="mt-3 text-sm text-tinta-suave">
+        Hasta confirmarlo vas a poder entrar y leer lo que pasa en tu zona, pero todavía no publicar ni reportar.
+      </p>
+
+      <div className="mt-6 space-y-3 empty:hidden">
+        {reenvio.estado === 'enviado' && <Aviso tipo="exito">{reenvio.mensaje}</Aviso>}
+        {reenvio.estado === 'espera' && <Aviso tipo="aviso">{reenvio.mensaje}</Aviso>}
+      </div>
+
+      <div className="mt-6 space-y-3">
+        <Boton variante="secundario" onClick={onReenviar} cargando={reenvio.estado === 'enviando'}>
+          Reenviar el correo
+        </Boton>
+        <p className="text-center text-sm text-tinta-suave">
+          ¿No llegó? Mirá en correo no deseado, o{' '}
+          <Link to="/login" className="font-bold text-tinta underline decoration-violeta decoration-2 underline-offset-4 hover:decoration-tinta">
+            entrá igual
+          </Link>{' '}
+          y confirmalo más tarde.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // HU01 · Registro de usuario — HU02 · Validación de los datos de registro
 export default function Registro() {
-  const navigate = useNavigate()
   const [datos, setDatos] = useState(VACIO)
   const [tocados, setTocados] = useState({})
   const [enviado, setEnviado] = useState(false)
@@ -56,7 +107,22 @@ export default function Registro() {
   const [creada, setCreada] = useState(false)
   const [zonas, setZonas] = useState(null)
   const [errorZonas, setErrorZonas] = useState(null)
-  const refs = { nombre: useRef(null), apellido: useRef(null), email: useRef(null), password: useRef(null), idZona: useRef(null) }
+  // HU06 · CA 6.1: con la cuenta creada el formulario deja paso al aviso de
+  // «revisá tu correo», que también permite pedir el enlace de nuevo.
+  const [cuenta, setCuenta] = useState(null)
+  const [reenvio, setReenvio] = useState({ estado: 'listo', mensaje: null })
+  // HU07 · CA 7.3: los textos se abren en un diálogo, sin navegar, así no se
+  // pierde nada de lo ya cargado en el formulario.
+  const [documento, setDocumento] = useState(null)
+  const refs = {
+    nombre: useRef(null),
+    apellido: useRef(null),
+    email: useRef(null),
+    telefono: useRef(null),
+    password: useRef(null),
+    idZona: useRef(null),
+    terminos: useRef(null),
+  }
   const refPanel = useRef(null)
 
   useEffect(() => {
@@ -81,7 +147,10 @@ export default function Registro() {
 
   // CA 2.1 y 2.2: con un correo mal escrito o una contraseña débil el botón
   // queda deshabilitado. Los campos vacíos se señalan al presionarlo (CA 2.3).
+  // CA 7.1: la casilla sin marcar deshabilita el botón desde el principio, no
+  // recién después del primer intento como el resto de los campos.
   const hayErroresDeFormato = Object.entries(validacion).some(([campo, error]) => {
+    if (campo === 'terminos') return true
     if (error === MENSAJES.obligatorio) return false
     if (campo === 'password') return true
     return tocados[campo] || enviado
@@ -99,7 +168,23 @@ export default function Registro() {
     setDatos((d) => ({ ...d, [campo]: e.target.value }))
     if (erroresServidor[campo]) setErroresServidor((x) => ({ ...x, [campo]: null }))
   }
+  const cambiarCasilla = (campo) => (e) => {
+    setDatos((d) => ({ ...d, [campo]: e.target.checked }))
+    setTocados((t) => ({ ...t, [campo]: true }))
+  }
   const tocar = (campo) => () => setTocados((t) => ({ ...t, [campo]: true }))
+
+  // HU06 · CA 6.5. El servidor responde 429 con los minutos que faltan cuando
+  // ya mandó uno hace menos de cinco minutos; acá solo se muestra.
+  async function reenviarVerificacion() {
+    setReenvio({ estado: 'enviando', mensaje: null })
+    try {
+      const { mensaje } = await api('/auth/reenviar-verificacion', { method: 'POST', body: { email: cuenta.email } })
+      setReenvio({ estado: 'enviado', mensaje })
+    } catch (error) {
+      setReenvio({ estado: 'espera', mensaje: error.message })
+    }
+  }
 
   async function enviar(e) {
     e.preventDefault()
@@ -116,14 +201,18 @@ export default function Registro() {
     try {
       const { usuario } = await api('/usuarios/registro', {
         method: 'POST',
-        body: { ...datos, email: normalizarEmail(datos.email), idZona: Number(datos.idZona) },
+        body: {
+          ...datos,
+          email: normalizarEmail(datos.email),
+          telefono: datos.telefono.trim() || null,
+          idZona: Number(datos.idZona),
+        },
       })
       setCreada(true)
       refPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      // CA 1.1: confirmación en verde y redirección al inicio de sesión.
-      setTimeout(() => {
-        navigate('/login', { state: { registrado: true, email: usuario.email, nombre: usuario.nombre } })
-      }, 2600)
+      // CA 6.1: la cuenta existe pero todavía no está confirmada, así que en
+      // lugar de llevar al login se explica que hay un correo esperando.
+      setTimeout(() => setCuenta({ email: usuario.email, nombre: usuario.nombre }), 1800)
     } catch (error) {
       setEnviando(false)
       if (error.campos && Object.keys(error.campos).length) {
@@ -149,6 +238,11 @@ export default function Registro() {
             <div className="mb-8 hidden lg:block">
               <Logo />
             </div>
+
+            {cuenta ? (
+              <RevisaTuCorreo cuenta={cuenta} reenvio={reenvio} onReenviar={reenviarVerificacion} />
+            ) : (
+              <>
             <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Sumate al barrio</h1>
             <p className="mt-2 text-tinta-suave">Creá tu cuenta en un minuto. Tus vecinos ya te están esperando.</p>
 
@@ -199,6 +293,23 @@ export default function Registro() {
                   error={errorVisible('email')}
                 />
 
+                {/* HU08 · CA 8.1 y 8.2 — opcional, pero si se carga se valida. */}
+                <Campo
+                  ref={refs.telefono}
+                  etiqueta="Teléfono de contacto (opcional)"
+                  type="tel"
+                  name="telefono"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  placeholder="+54 351 123 4567"
+                  maxLength={LIMITES.telefono}
+                  value={datos.telefono}
+                  onChange={cambiar('telefono')}
+                  onBlur={tocar('telefono')}
+                  error={errorVisible('telefono')}
+                  ayuda="Solo lo ven los vecinos de tu zona, para contactarte ante una urgencia."
+                />
+
                 <div>
                   <CampoPassword
                     ref={refs.password}
@@ -241,6 +352,24 @@ export default function Registro() {
                     ayuda="Vas a ver las publicaciones y alertas de tu zona."
                   />
                 )}
+
+                {/* HU07 · CA 7.1 y 7.3 */}
+                <CampoCasilla
+                  ref={refs.terminos}
+                  name="terminos"
+                  checked={datos.terminos}
+                  onChange={cambiarCasilla('terminos')}
+                  error={errorVisible('terminos')}
+                >
+                  Leí y acepto los{' '}
+                  <button type="button" onClick={() => setDocumento('terminos')} className="font-bold text-tinta underline decoration-violeta decoration-2 underline-offset-4 hover:decoration-tinta">
+                    términos de uso
+                  </button>{' '}
+                  y la{' '}
+                  <button type="button" onClick={() => setDocumento('privacidad')} className="font-bold text-tinta underline decoration-violeta decoration-2 underline-offset-4 hover:decoration-tinta">
+                    política de privacidad
+                  </button>.
+                </CampoCasilla>
               </fieldset>
 
               <Boton type="submit" cargando={enviando} disabled={hayErroresDeFormato || creada}>
@@ -254,6 +383,8 @@ export default function Registro() {
                 Iniciá sesión
               </Link>
             </p>
+              </>
+            )}
           </div>
         </section>
 
@@ -288,6 +419,36 @@ export default function Registro() {
           </div>
         </section>
       </div>
+
+      {/* CA 7.3: el texto se abre acá mismo, el formulario queda intacto detrás. */}
+      <Modal
+        abierto={Boolean(documento)}
+        titulo={documento ? DOCUMENTOS[documento].titulo : ''}
+        onCerrar={() => setDocumento(null)}
+        acciones={
+          <Boton variante="secundario" bloque={false} onClick={() => setDocumento(null)}>
+            Cerrar
+          </Boton>
+        }
+      >
+        {documento && (
+          <>
+            <p className="text-xs font-bold tracking-wide text-tinta-suave uppercase">{DOCUMENTOS[documento].resumen}</p>
+            <div className="max-h-[52vh] space-y-4 overflow-y-auto pr-1">
+              {DOCUMENTOS[documento].secciones.map((seccion) => (
+                <section key={seccion.titulo}>
+                  <h3 className="font-bold text-tinta">{seccion.titulo}</h3>
+                  {seccion.parrafos.map((parrafo, i) => (
+                    <p key={i} className="mt-1">
+                      {parrafo}
+                    </p>
+                  ))}
+                </section>
+              ))}
+            </div>
+          </>
+        )}
+      </Modal>
     </main>
   )
 }

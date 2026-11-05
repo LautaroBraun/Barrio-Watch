@@ -1,11 +1,10 @@
 import { Router } from 'express'
-import { createHash, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { MENSAJES, normalizarEmail, validarEmail, validarPassword } from '@barrio-watch/shared'
 import { config } from '../config.js'
 import { query, transaccion } from '../db.js'
 import { ErrorApi } from '../errores.js'
-import { requiereSesion } from '../middleware/autenticacion.js'
+import { requiereSesion, sesionOpcional } from '../middleware/autenticacion.js'
 import {
   cerrarSesion,
   cerrarTodasLasSesiones,
@@ -13,7 +12,15 @@ import {
   firmarToken,
   registrarAcceso,
 } from '../services/sesiones.js'
-import { buscarPorEmail, usuarioPublico } from '../services/usuarios.js'
+import {
+  TIPOS,
+  buscarToken,
+  comprobarToken,
+  crearToken,
+  minutosDesdeUltimoToken,
+} from '../services/tokens.js'
+import { buscarPorEmail, buscarPorId, marcarEmailVerificado, usuarioPublico } from '../services/usuarios.js'
+import { enviarEnlaceVerificacion } from '../services/verificacion.js'
 import { COSTO_BCRYPT } from './usuarios.js'
 
 // Hash de una contraseña cualquiera: se compara contra él cuando el correo no
@@ -22,6 +29,7 @@ const HASH_FICTICIO = bcrypt.hashSync('barrio-watch-ficticio', COSTO_BCRYPT)
 
 const MENSAJE_CREDENCIALES = 'El correo o la contraseña son incorrectos'
 const MENSAJE_RECUPERACION = 'Si el correo está registrado, te enviamos un enlace de recuperación'
+const MENSAJE_VERIFICACION = 'Si la cuenta existe y todavía no está confirmada, te enviamos un enlace nuevo'
 
 const credencialesInvalidas = () => new ErrorApi(401, 'CREDENCIALES_INVALIDAS', MENSAJE_CREDENCIALES)
 
@@ -33,7 +41,8 @@ const cuentaBloqueada = (bloqueadaHasta) =>
     { bloqueadaHasta: bloqueadaHasta.toISOString() },
   )
 
-const hashToken = (token) => createHash('sha256').update(token).digest('hex')
+const VIGENCIA_RECUPERACION = () => `${config.minutosVigenciaEnlace} minutos`
+const VIGENCIA_VERIFICACION = () => `${config.horasVigenciaVerificacion} horas`
 
 export function crearRutasAuth({ correo }) {
   const router = Router()
@@ -101,12 +110,11 @@ export function crearRutasAuth({ correo }) {
 
     const usuario = await buscarPorEmail(normalizarEmail(req.body.email))
     if (usuario?.estado) {
-      const token = randomBytes(32).toString('base64url')
-      await query(
-        `insert into tokens_recuperacion (id_usuario, token_hash, fecha_expiracion)
-         values ($1, $2, now() + make_interval(mins => $3))`,
-        [usuario.id_usuario, hashToken(token), config.minutosVigenciaEnlace],
-      )
+      const token = await crearToken({
+        idUsuario: usuario.id_usuario,
+        tipo: TIPOS.RECUPERACION,
+        minutosVigencia: config.minutosVigenciaEnlace,
+      })
       const enlace = `${config.frontendUrl}/restablecer?token=${token}`
       // No se espera el envío: así la respuesta tarda lo mismo exista o no la cuenta.
       correo
@@ -118,35 +126,9 @@ export function crearRutasAuth({ correo }) {
     res.json({ mensaje: MENSAJE_RECUPERACION })
   })
 
-  async function buscarToken(ejecutor, token, bloquear = false) {
-    if (typeof token !== 'string' || token.length < 20 || token.length > 200) return null
-    const { rows } = await ejecutor.query(
-      `select t.id_token, t.id_usuario, t.usado, t.fecha_expiracion <= now() as vencido, u.nombre
-         from tokens_recuperacion t
-         join usuarios u on u.id_usuario = t.id_usuario
-        where t.token_hash = $1
-        ${bloquear ? 'for update of t' : ''}`,
-      [hashToken(token)],
-    )
-    return rows[0] ?? null
-  }
-
-  // CA 5.4: el enlace vencido, usado o inválido se rechaza explicando el motivo.
-  function comprobarToken(fila) {
-    if (!fila) {
-      throw new ErrorApi(400, 'ENLACE_INVALIDO', 'Este enlace no es válido. Revisá que lo hayas copiado completo o pedí uno nuevo.')
-    }
-    if (fila.usado) {
-      throw new ErrorApi(410, 'ENLACE_USADO', 'Este enlace ya fue utilizado. Cada enlace sirve para una sola vez.')
-    }
-    if (fila.vencido) {
-      throw new ErrorApi(410, 'ENLACE_VENCIDO', `Este enlace venció. Los enlaces valen ${config.minutosVigenciaEnlace} minutos desde que los pedís.`)
-    }
-  }
-
   router.post('/restablecer/verificar', async (req, res) => {
-    const fila = await buscarToken({ query }, req.body?.token)
-    comprobarToken(fila)
+    const fila = await buscarToken({ query }, req.body?.token, TIPOS.RECUPERACION)
+    comprobarToken(fila, { vigenciaTexto: VIGENCIA_RECUPERACION() })
     res.json({ valido: true, nombre: fila.nombre })
   })
 
@@ -158,16 +140,77 @@ export function crearRutasAuth({ correo }) {
     const passwordHash = await bcrypt.hash(req.body.password, COSTO_BCRYPT)
 
     await transaccion(async (cliente) => {
-      const fila = await buscarToken(cliente, req.body?.token, true)
-      comprobarToken(fila)
+      const fila = await buscarToken(cliente, req.body?.token, TIPOS.RECUPERACION, true)
+      comprobarToken(fila, { vigenciaTexto: VIGENCIA_RECUPERACION() })
 
       await cliente.query('update usuarios set password_hash = $1 where id_usuario = $2', [passwordHash, fila.id_usuario])
       // Se consume este enlace y cualquier otro pendiente de la misma cuenta.
-      await cliente.query('update tokens_recuperacion set usado = true where id_usuario = $1 and not usado', [fila.id_usuario])
+      await cliente.query(
+        `update tokens set usado = true
+          where id_usuario = $1 and tipo = $2 and not usado`,
+        [fila.id_usuario, TIPOS.RECUPERACION],
+      )
       await cerrarTodasLasSesiones(cliente, fila.id_usuario)
     })
 
     res.json({ mensaje: 'Tu contraseña fue actualizada. Ya podés iniciar sesión con la nueva.' })
+  })
+
+  // HU06 · CA 6.2 y 6.3 — confirmar el correo desde el enlace
+  router.post('/verificar', async (req, res) => {
+    const resultado = await transaccion(async (cliente) => {
+      const fila = await buscarToken(cliente, req.body?.token, TIPOS.VERIFICACION, true)
+
+      // Un enlace ya usado sobre una cuenta que efectivamente quedó verificada
+      // no es un error para quien lo abre dos veces: ya está, está confirmada.
+      if (fila?.usado && fila.email_verificado) return { yaEstaba: true, nombre: fila.nombre }
+
+      comprobarToken(fila, { vigenciaTexto: VIGENCIA_VERIFICACION() })
+
+      await marcarEmailVerificado(cliente, fila.id_usuario)
+      // Se consume este enlace y cualquier otro de verificación pendiente.
+      await cliente.query(
+        `update tokens set usado = true
+          where id_usuario = $1 and tipo = $2 and not usado`,
+        [fila.id_usuario, TIPOS.VERIFICACION],
+      )
+      return { yaEstaba: false, nombre: fila.nombre }
+    })
+
+    res.json({
+      verificado: true,
+      nombre: resultado.nombre,
+      mensaje: resultado.yaEstaba
+        ? 'Tu correo ya estaba confirmado. Podés iniciar sesión cuando quieras.'
+        : '¡Listo! Confirmamos tu correo. Ya podés publicar y reportar en tu zona.',
+    })
+  })
+
+  // HU06 · CA 6.3 y 6.5 — reenviar el enlace de verificación
+  router.post('/reenviar-verificacion', sesionOpcional, async (req, res) => {
+    // Sirve con la sesión abierta (el aviso persistente de CA 6.4) y también
+    // desde la pantalla de «revisá tu correo», donde todavía no hay sesión.
+    const usuario = req.usuario
+      ? await buscarPorId(req.usuario.id)
+      : await buscarPorEmail(normalizarEmail(req.body?.email))
+
+    if (!usuario || !usuario.estado || usuario.email_verificado) {
+      // Mismo mensaje exista o no la cuenta, para no revelar qué correos
+      // están registrados ni cuáles ya verificaron.
+      return res.json({ mensaje: MENSAJE_VERIFICACION })
+    }
+
+    const { enviado, minutosRestantes } = await enviarEnlaceVerificacion({ usuario, correo })
+    if (!enviado) {
+      throw new ErrorApi(
+        429,
+        'REENVIO_DEMASIADO_PRONTO',
+        `Ya te mandamos un correo hace un momento. Probá de nuevo en ${minutosRestantes} ${minutosRestantes === 1 ? 'minuto' : 'minutos'}.`,
+        { minutosRestantes },
+      )
+    }
+
+    res.json({ mensaje: MENSAJE_VERIFICACION })
   })
 
   return router

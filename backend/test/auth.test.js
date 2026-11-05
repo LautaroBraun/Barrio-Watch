@@ -16,6 +16,7 @@ const PASSWORD_SEMILLA = 'Barrio2026'
 let app
 let pool
 const correosEnviados = []
+const verificacionesEnviadas = []
 
 before(async () => {
   if (omitir) return
@@ -26,13 +27,18 @@ before(async () => {
   ;({ pool } = await import('../src/db.js'))
   app = crearApp({
     limitarPeticiones: false,
-    correo: { enviarRecuperacion: async (datos) => correosEnviados.push(datos) },
+    correo: {
+      enviarRecuperacion: async (datos) => correosEnviados.push(datos),
+      // HU06: el alta y el reenvío disparan el correo de verificación.
+      enviarVerificacion: async (datos) => verificacionesEnviadas.push(datos),
+    },
   })
 })
 
 beforeEach(async () => {
   if (omitir) return
   correosEnviados.length = 0
+  verificacionesEnviadas.length = 0
   await pool.query(`set client_min_messages = warning; ${ESQUEMA}`)
 })
 
@@ -46,6 +52,8 @@ const nuevoVecino = (extra = {}) => ({
   email: 'rosa@example.com',
   password: 'Mate1234',
   idZona: 2,
+  // HU07 · CA 7.1: sin la aceptación explícita el registro no se procesa.
+  terminos: true,
   ...extra,
 })
 
@@ -127,7 +135,7 @@ describe('HU03 · Inicio de sesión', { skip: omitir }, () => {
     assert.equal(res.status, 200)
     assert.ok(res.body.token)
     assert.equal(res.body.usuario.nombre, 'Juan')
-    assert.deepEqual(res.body.usuario.zona, { id: 2, nombre: 'Manzana 2' })
+    assert.deepEqual(res.body.usuario.zona, { id: 2, codigo: 'MZ-02', nombre: 'Manzana 2' })
 
     const feed = await request(app).get('/api/publicaciones').set('Authorization', `Bearer ${res.body.token}`)
     assert.equal(feed.status, 200)
@@ -266,7 +274,7 @@ describe('HU05 · Recuperación de contraseña', { skip: omitir }, () => {
     const token = tokenDelCorreo()
     const { rows } = await pool.query(
       `select token_hash, usado, extract(epoch from fecha_expiracion - fecha_creacion) as segundos
-         from tokens_recuperacion where id_usuario = 3`,
+         from tokens where id_usuario = 3`,
     )
     assert.equal(rows.length, 1)
     assert.notEqual(rows[0].token_hash, token)
@@ -315,7 +323,7 @@ describe('HU05 · Recuperación de contraseña', { skip: omitir }, () => {
   test('CA 5.4 · un enlace vencido no sirve', async () => {
     await pedirEnlace('juan@barriowatch.com')
     await pool.query(
-      `update tokens_recuperacion
+      `update tokens
           set fecha_creacion = now() - interval '2 hours', fecha_expiracion = now() - interval '1 hour'`,
     )
     const res = await request(app).post('/api/auth/restablecer').send({ token: tokenDelCorreo(), password: 'NuevaClave9' })

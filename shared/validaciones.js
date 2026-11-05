@@ -11,6 +11,16 @@ export const MENSAJES = {
   passwordDebil: 'La contraseña no cumple con los requisitos',
   passwordsDistintas: 'Las contraseñas no coinciden',
   maximo: (n) => `Máximo ${n} caracteres`,
+  // Sprint 1 · ampliación
+  telefonoInvalido: 'Ingresá un teléfono válido, por ejemplo +54 351 123 4567',
+  terminosObligatorios: 'Tenés que aceptar los términos y la política de privacidad',
+  // Sprint 2 · zonas
+  codigoZonaInvalido: 'Dos letras, guion y dos o tres números. Ejemplo válido: MZ-05',
+  codigoZonaDuplicado: 'Ya existe una zona con ese código',
+  nombreZonaDuplicado: 'Ya existe una zona con ese nombre',
+  ordenInvalido: 'El orden tiene que ser un número entero',
+  ordenNegativo: 'El orden debe ser cero o mayor',
+  zonaNoEncontrada: 'La zona que buscás no existe',
 }
 
 export const LIMITES = {
@@ -21,6 +31,10 @@ export const LIMITES = {
   // bcrypt solo considera los primeros 72 bytes: un tope menor evita que dos
   // contraseñas largas distintas terminen generando el mismo hash.
   passwordMax: 64,
+  telefono: 30,
+  codigoZona: 10,
+  nombreZona: 100,
+  descripcionZona: 255,
 }
 
 // Política de contraseñas definida por el equipo (HU02): mínimo 8 caracteres,
@@ -77,6 +91,9 @@ export function validarZona(idZona) {
 }
 
 // Devuelve un objeto { campo: mensaje } solo con los campos que tienen error.
+// El teléfono (HU08) y la aceptación de los términos (HU07) se incorporaron
+// al formulario en la ampliación del Sprint 1; las funciones que los validan
+// están al final del archivo, junto al resto de esa ampliación.
 export function validarRegistro(datos = {}) {
   const errores = {
     nombre: validarNombrePropio(datos.nombre, LIMITES.nombre),
@@ -84,6 +101,84 @@ export function validarRegistro(datos = {}) {
     email: validarEmail(datos.email),
     password: validarPassword(datos.password),
     idZona: validarZona(datos.idZona),
+    telefono: validarTelefono(datos.telefono),
+    terminos: validarTerminos(datos.terminos),
+  }
+  return Object.fromEntries(Object.entries(errores).filter(([, msg]) => msg))
+}
+
+// =============================================================================
+// Sprint 1 · Ampliación (HU07, HU08)
+// =============================================================================
+
+// Versión vigente de los términos y la política de privacidad. Se guarda junto
+// con la fecha de aceptación (CA 7.2) para saber qué texto aceptó cada vecino.
+export const VERSION_TERMINOS = '1.0'
+
+const TELEFONO_REGEX = /^\+?[\d\s()-]{8,25}$/
+
+// HU08 · CA 8.1 y 8.2: el teléfono es opcional, pero si se carga tiene que
+// parecerse a un número de verdad (entre 8 y 15 dígitos, formato E.164).
+export function validarTelefono(telefono) {
+  const valor = String(telefono ?? '').trim()
+  if (!valor) return null
+  if (valor.length > LIMITES.telefono) return MENSAJES.maximo(LIMITES.telefono)
+  const digitos = valor.replace(/\D/g, '').length
+  if (!TELEFONO_REGEX.test(valor) || digitos < 8 || digitos > 15) return MENSAJES.telefonoInvalido
+  return null
+}
+
+// HU07 · CA 7.1: sin la casilla marcada no se puede crear la cuenta.
+export function validarTerminos(aceptado) {
+  return aceptado === true ? null : MENSAJES.terminosObligatorios
+}
+
+// =============================================================================
+// Sprint 2 · Gestión de zonas (HU13 a HU19)
+// =============================================================================
+
+export const CODIGO_ZONA_REGEX = /^[A-Z]{2}-\d{2,3}$/
+
+// HU18 · CA 18.1: dos letras mayúsculas, guion y dos o tres números (MZ-05).
+export function validarCodigoZona(codigo) {
+  const valor = String(codigo ?? '').trim()
+  if (!valor) return MENSAJES.obligatorio
+  if (valor.length > LIMITES.codigoZona) return MENSAJES.maximo(LIMITES.codigoZona)
+  if (!CODIGO_ZONA_REGEX.test(valor)) return MENSAJES.codigoZonaInvalido
+  return null
+}
+
+export function validarNombreZona(nombre) {
+  const valor = String(nombre ?? '').trim()
+  if (!valor) return MENSAJES.obligatorio
+  if (valor.length > LIMITES.nombreZona) return MENSAJES.maximo(LIMITES.nombreZona)
+  return null
+}
+
+export function validarDescripcionZona(descripcion) {
+  const valor = String(descripcion ?? '').trim()
+  if (valor.length > LIMITES.descripcionZona) return MENSAJES.maximo(LIMITES.descripcionZona)
+  return null
+}
+
+// HU18 · CA 18.3: el orden de visualización no admite negativos.
+export function validarOrdenZona(orden) {
+  if (orden === '' || orden === null || orden === undefined) return MENSAJES.obligatorio
+  const n = Number(orden)
+  if (!Number.isInteger(n)) return MENSAJES.ordenInvalido
+  if (n < 0) return MENSAJES.ordenNegativo
+  if (n > 9999) return MENSAJES.maximo(4)
+  return null
+}
+
+// HU18 · CA 18.2 y 18.4: el mismo juego de reglas corre en el navegador y en
+// el servidor. En la edición el código no viaja, porque es inmutable (CA 14.2).
+export function validarZonaFormulario(datos = {}, { conCodigo = true } = {}) {
+  const errores = {
+    codigo: conCodigo ? validarCodigoZona(datos.codigo) : null,
+    nombre: validarNombreZona(datos.nombre),
+    descripcion: validarDescripcionZona(datos.descripcion),
+    orden: validarOrdenZona(datos.orden),
   }
   return Object.fromEntries(Object.entries(errores).filter(([, msg]) => msg))
 }

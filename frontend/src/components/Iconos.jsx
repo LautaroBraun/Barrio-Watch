@@ -69,3 +69,68 @@ export const IconoFlecha = (props) => (
     <path d="M19 12H5M11 18l-6-6 6-6" />
   </svg>
 )
+
+// --- Sprint 2 · gestión de zonas -------------------------------------------
+
+export const IconoBuscar = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.6-3.6" />
+  </svg>
+)
+
+export const IconoMas = (props) => (
+  <svg {...base} {...props}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+
+export const IconoLapiz = (props) => (
+  <svg {...base} {...props}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+)
+
+export const IconoDesactivar = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M5.6 5.6 18.4 18.4" />
+  </svg>
+)
+
+export const IconoReactivar = (props) => (
+  <svg {...base} {...props}>
+    <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" />
+    <path d="M21 3v5h-5" />
+    <path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" />
+    <path d="M3 21v-5h5" />
+  </svg>
+)
+
+export const IconoCandado = (props) => (
+  <svg {...base} {...props}>
+    <rect x="4" y="10" width="16" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+)
+
+export const IconoMapa = (props) => (
+  <svg {...base} {...props}>
+    <path d="m9 4-6 2.5v13L9 17l6 3 6-2.5v-13L15 7Z" />
+    <path d="M9 4v13M15 7v13" />
+  </svg>
+)
+
+export const IconoCerrar = (props) => (
+  <svg {...base} {...props}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+)
+
+export const IconoSobre = (props) => (
+  <svg {...base} {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </svg>
+)

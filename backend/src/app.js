@@ -6,7 +6,7 @@ import { config } from './config.js'
 import { manejadorErrores } from './errores.js'
 import { crearRutasAuth } from './routes/auth.js'
 import rutasPublicaciones from './routes/publicaciones.js'
-import rutasUsuarios from './routes/usuarios.js'
+import { crearRutasUsuarios } from './routes/usuarios.js'
 import rutasZonas from './routes/zonas.js'
 import { crearServicioCorreo } from './services/correo.js'
 
@@ -31,12 +31,14 @@ export function crearApp({ correo = crearServicioCorreo(), limitarPeticiones = t
   if (limitarPeticiones) {
     app.use('/api/auth/login', limitador(30, 15))
     app.use('/api/auth/recuperar', limitador(5, 15))
+    // HU06 · CA 6.5: el reenvío además tiene su propia espera de 5 minutos.
+    app.use('/api/auth/reenviar-verificacion', limitador(10, 15))
     app.use('/api/usuarios/registro', limitador(20, 60))
   }
 
   app.get('/api/salud', (_req, res) => res.json({ ok: true }))
   app.use('/api/auth', crearRutasAuth({ correo }))
-  app.use('/api/usuarios', rutasUsuarios)
+  app.use('/api/usuarios', crearRutasUsuarios({ correo }))
   app.use('/api/zonas', rutasZonas)
   app.use('/api/publicaciones', rutasPublicaciones)
 

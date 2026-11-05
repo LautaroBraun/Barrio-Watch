@@ -85,6 +85,17 @@ export function AuthProvider({ children }) {
     [programarVencimiento],
   )
 
+  // HU06 · CA 6.4: al confirmar el correo el perfil cambia (email_verificado),
+  // y el aviso de solo lectura tiene que irse sin pedir que vuelva a entrar.
+  const recargarSesion = useCallback(async () => {
+    try {
+      const { usuario } = await api('/auth/sesion')
+      setUsuario(usuario)
+    } catch {
+      // Sin sesión abierta no hay nada que refrescar.
+    }
+  }, [])
+
   // CA 3.3: se invalida el token en el servidor y se borra del navegador.
   const cerrarSesion = useCallback(async () => {
     try {
@@ -96,8 +107,8 @@ export function AuthProvider({ children }) {
   }, [limpiar])
 
   const valor = useMemo(
-    () => ({ usuario, cargando, motivoSalida, verificarCredenciales, abrirSesion, cerrarSesion }),
-    [usuario, cargando, motivoSalida, verificarCredenciales, abrirSesion, cerrarSesion],
+    () => ({ usuario, cargando, motivoSalida, verificarCredenciales, abrirSesion, cerrarSesion, recargarSesion }),
+    [usuario, cargando, motivoSalida, verificarCredenciales, abrirSesion, cerrarSesion, recargarSesion],
   )
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>

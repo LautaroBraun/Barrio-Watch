@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { IconoAlerta, IconoCheck, IconoOjo, IconoOjoTachado, IconoPunto, IconoReloj } from './Iconos.jsx'
+import { IconoAlerta, IconoCandado, IconoCheck, IconoOjo, IconoOjoTachado, IconoPunto, IconoReloj } from './Iconos.jsx'
 
 const estiloInput =
   'w-full rounded-2xl border-2 bg-white px-4 py-3 text-base text-tinta placeholder:text-tinta-suave/60 ' +
@@ -172,14 +172,16 @@ export function Aviso({ tipo = 'info', titulo, children, className = '' }) {
   )
 }
 
-export function Boton({ cargando = false, disabled = false, children, variante = 'primario', className = '', ...props }) {
+export function Boton({ cargando = false, disabled = false, children, variante = 'primario', bloque = true, className = '', ...props }) {
   const variantes = {
     primario: 'bg-tinta text-white hover:bg-tinta/90 disabled:bg-tinta/35',
     secundario: 'border-2 border-linea bg-white text-tinta hover:border-tinta/40 disabled:opacity-50',
+    // HU15: la desactivación es destructiva y se señala en rojo.
+    peligro: 'bg-error text-white hover:bg-error/90 disabled:bg-error/40',
   }
   return (
     <button
-      className={`relative inline-flex h-13 w-full items-center justify-center gap-2 rounded-full px-6 font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${variantes[variante]} ${className}`}
+      className={`relative inline-flex h-13 items-center justify-center gap-2 rounded-full px-6 font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 ${bloque ? 'w-full' : ''} ${variantes[variante]} ${className}`}
       {...props}
       disabled={cargando || disabled}
       aria-busy={cargando}
@@ -187,5 +189,80 @@ export function Boton({ cargando = false, disabled = false, children, variante =
       {cargando && <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />}
       {children}
     </button>
+  )
+}
+
+export function CampoArea({ ref, etiqueta, error, ayuda, className = '', ...props }) {
+  const id = useId()
+  const idMensaje = `${id}-mensaje`
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-semibold">
+        {etiqueta}
+      </label>
+      <textarea
+        ref={ref}
+        id={id}
+        rows={3}
+        className={`${estiloInput} ${claseBorde(error)} resize-y`}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error || ayuda ? idMensaje : undefined}
+        {...props}
+      />
+      <MensajeCampo id={idMensaje} error={error} ayuda={ayuda} />
+    </div>
+  )
+}
+
+// Campo bloqueado: se ve el valor pero no se puede editar. HU14 · CA 14.2 lo
+// usa para el código de la zona, que es inmutable una vez creada.
+export function CampoBloqueado({ etiqueta, valor, ayuda }) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-semibold">
+        {etiqueta}
+      </label>
+      <div
+        id={id}
+        className="flex items-center gap-2 rounded-2xl border-2 border-dashed border-linea bg-papel px-4 py-3 text-base font-semibold text-tinta-suave"
+      >
+        {valor}
+        <IconoCandado width={16} height={16} className="ml-auto shrink-0" />
+      </div>
+      <MensajeCampo id={`${id}-mensaje`} ayuda={ayuda} />
+    </div>
+  )
+}
+
+// HU07 · CA 7.1: la casilla de aceptación de los términos.
+export function CampoCasilla({ ref, error, children, ...props }) {
+  const id = useId()
+  const idMensaje = `${id}-mensaje`
+  return (
+    <div>
+      <div className="flex items-start gap-3">
+        <input
+          ref={ref}
+          id={id}
+          type="checkbox"
+          className={`mt-0.5 size-5 shrink-0 cursor-pointer appearance-none rounded-md border-2 bg-white bg-center bg-no-repeat transition-colors checked:border-tinta checked:bg-tinta ${
+            error ? 'border-error' : 'border-linea'
+          }`}
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E\")",
+            backgroundSize: '0.8rem',
+          }}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? idMensaje : undefined}
+          {...props}
+        />
+        <label htmlFor={id} className="text-sm leading-relaxed">
+          {children}
+        </label>
+      </div>
+      <MensajeCampo id={idMensaje} error={error} />
+    </div>
   )
 }

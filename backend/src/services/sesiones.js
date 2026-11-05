@@ -26,8 +26,8 @@ export async function estadoBloqueo(idUsuario) {
         and fecha_inicio > greatest(
               coalesce((select max(fecha_inicio) from sesiones
                          where id_usuario = $1 and exitoso), '-infinity'),
-              coalesce((select max(fecha_creacion) from tokens_recuperacion
-                         where id_usuario = $1 and usado), '-infinity'))
+              coalesce((select max(fecha_creacion) from tokens
+                         where id_usuario = $1 and tipo = 'recuperacion' and usado), '-infinity'))
       order by fecha_inicio desc
       limit 200`,
     [idUsuario],
