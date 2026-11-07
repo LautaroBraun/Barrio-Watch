@@ -19,6 +19,7 @@ import {
   crearToken,
   minutosDesdeUltimoToken,
 } from '../services/tokens.js'
+import { enSegundoPlano } from '../services/segundoPlano.js'
 import { buscarPorEmail, buscarPorId, marcarEmailVerificado, usuarioPublico } from '../services/usuarios.js'
 import { enviarEnlaceVerificacion } from '../services/verificacion.js'
 import { COSTO_BCRYPT } from './usuarios.js'
@@ -116,10 +117,15 @@ export function crearRutasAuth({ correo }) {
         minutosVigencia: config.minutosVigenciaEnlace,
       })
       const enlace = `${config.frontendUrl}/restablecer?token=${token}`
-      // No se espera el envío: así la respuesta tarda lo mismo exista o no la cuenta.
-      correo
-        .enviarRecuperacion({ email: usuario.email, nombre: usuario.nombre, enlace })
-        .catch((e) => console.error('[correo] No se pudo enviar el enlace de recuperación:', e))
+      // Acá el envío no se espera a propósito: si la respuesta tardara solo
+      // cuando la cuenta existe, el tiempo delataría qué correos están
+      // registrados. enSegundoPlano mantiene viva la función serverless hasta
+      // que el correo salga, sin demorar la respuesta.
+      enSegundoPlano(
+        correo
+          .enviarRecuperacion({ email: usuario.email, nombre: usuario.nombre, enlace })
+          .catch((e) => console.error('[correo] No se pudo enviar el enlace de recuperación:', e)),
+      )
     }
 
     // Mismo mensaje exista o no la cuenta, para no revelar qué correos están registrados.
